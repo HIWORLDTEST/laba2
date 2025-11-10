@@ -1,4 +1,6 @@
 #include <iostream>
+#include <string>
+
 using namespace std;
 
 struct HNode // узел дерева
@@ -67,35 +69,41 @@ void pushNode(NodeList *&head, HNode *node)
     head = n;
 }
 
-void removeNode(NodeList *&head, NodeList *prev, NodeList *cur)
+void removeNodeByPtr(NodeList *&head, NodeList *target)
 {
-    if (!prev)
-        head = cur->next;
-    else
-        prev->next = cur->next;
-    delete cur;
+    if (!head || !target)
+        return;
+    if (head == target)
+    {
+        head = head->next;
+        delete target;
+        return;
+    }
+    NodeList *cur = head;
+    while (cur->next && cur->next != target)
+        cur = cur->next;
+    if (cur->next == target)
+    {
+        cur->next = target->next;
+        delete target;
+    }
 }
 
-void pickTwoMin(NodeList *head, HNode *&min1, HNode *&min2, NodeList *&prev1, NodeList *&prev2)
+void pickTwoMin(NodeList *head, NodeList *&min1, NodeList *&min2)
 {
     min1 = min2 = nullptr;
-    prev1 = prev2 = nullptr;
-    NodeList *cur = head, *prev = nullptr;
+    NodeList *cur = head;
     while (cur)
     {
-        if (!min1 || cur->node->freq < min1->freq)
+        if (!min1 || cur->node->freq < min1->node->freq)
         {
             min2 = min1;
-            prev2 = prev1;
-            min1 = cur->node;
-            prev1 = prev;
+            min1 = cur;
         }
-        else if (!min2 || cur->node->freq < min2->freq)
+        else if (!min2 || cur->node->freq < min2->node->freq)
         {
-            min2 = cur->node;
-            prev2 = prev;
+            min2 = cur;
         }
-        prev = cur;
         cur = cur->next;
     }
 }
@@ -112,25 +120,57 @@ HNode *buildHuffman(const int freq[256])
     if (!list)
         return nullptr;
     if (!list->next)
-        return list->node;
+    {
+        HNode *single = list->node;
+        delete list;
+        return single;
+    }
 
     while (list && list->next)
     {
-        HNode *n1, *n2;
-        NodeList *p1, *p2;
-        pickTwoMin(list, n1, n2, p1, p2);
-        removeNode(list, p1, p1 ? p1->next : list);
-        removeNode(list, p2, p2 ? p2->next : list);
+        NodeList *min1, *min2;
+        pickTwoMin(list, min1, min2);
+
+        if (!min1 || !min2)
+            break;
+
+        HNode *n1 = min1->node;
+        HNode *n2 = min2->node;
+
+        removeNodeByPtr(list, min1);
+        removeNodeByPtr(list, min2);
+
         HNode *parent = makeParent(n1, n2);
         pushNode(list, parent);
     }
 
-    HNode *root = list->node;
-    delete list;
+    HNode *root = nullptr;
+    if (list)
+    {
+        root = list->node;
+        delete list;
+    }
     return root;
 }
 
-void buildCodesDfs(HNode *t, BitNode *path, CodeTable *&table)
+BitNode *makeBitListFromString(const string &path)
+{
+    BitNode *head = nullptr, *tail = nullptr;
+    for (char c : path)
+    {
+        BitNode *b = new BitNode{c, nullptr};
+        if (!head)
+            head = tail = b;
+        else
+        {
+            tail->next = b;
+            tail = b;
+        }
+    }
+    return head;
+}
+
+void buildCodesDfs(HNode *t, string &path, CodeTable *&table)
 {
     if (!t)
         return;
@@ -138,29 +178,20 @@ void buildCodesDfs(HNode *t, BitNode *path, CodeTable *&table)
     {
         CodeTable *entry = new CodeTable;
         entry->ch = t->ch;
-        entry->code = nullptr;
-
-        BitNode *curPath = path, *last = nullptr;
-        while (curPath)
-        {
-            BitNode *b = new BitNode{curPath->bit, nullptr};
-            if (!entry->code)
-                entry->code = b;
-            else
-                last->next = b;
-            last = b;
-            curPath = curPath->next;
-        }
+        entry->code = makeBitListFromString(path);
         entry->next = table;
         table = entry;
         return;
     }
+    // идти влево с добавлением '0'
+    path.push_back('0');
+    buildCodesDfs(t->left, path, table);
+    path.pop_back();
 
-    BitNode leftBit{'0', path};
-    buildCodesDfs(t->left, &leftBit, table);
-
-    BitNode rightBit{'1', path};
-    buildCodesDfs(t->right, &rightBit, table);
+    // идти вправо с добавлением '1'
+    path.push_back('1');
+    buildCodesDfs(t->right, path, table);
+    path.pop_back();
 }
 
 BitNode *getCode(CodeTable *table, unsigned char c)
@@ -187,7 +218,10 @@ BitNode *encode(const char *s, CodeTable *table)
             if (!head)
                 head = tail = b;
             else
-                tail->next = b, tail = b;
+            {
+                tail->next = b;
+                tail = b;
+            }
             cur = cur->next;
         }
     }
@@ -215,6 +249,9 @@ void decode(BitNode *encoded, HNode *root, string &out)
             cur = cur->left;
         else
             cur = cur->right;
+
+        if (!cur) // защитная проверка
+            return;
 
         if (cur->isLeaf)
         {
@@ -249,6 +286,27 @@ void printTable(CodeTable *table)
     }
 }
 
+void freeBitList(BitNode *b)
+{
+    while (b)
+    {
+        BitNode *nx = b->next;
+        delete b;
+        b = nx;
+    }
+}
+
+void freeCodeTable(CodeTable *table)
+{
+    while (table)
+    {
+        CodeTable *nx = table->next;
+        freeBitList(table->code);
+        delete table;
+        table = nx;
+    }
+}
+
 int main()
 {
     cout << "Введите исходную строку (без пробелов): ";
@@ -256,13 +314,14 @@ int main()
     cin >> input;
 
     int freq[256] = {};
-    for (char c : input)
-        freq[(unsigned char)c]++;
+    for (unsigned char c : input)
+        freq[c]++;
 
     HNode *root = buildHuffman(freq);
 
     CodeTable *table = nullptr;
-    buildCodesDfs(root, nullptr, table);
+    string path;
+    buildCodesDfs(root, path, table);
 
     BitNode *encoded = encode(input.c_str(), table);
 
@@ -278,6 +337,10 @@ int main()
     cout << "\nВосстановленная строка: " << decoded << "\n";
     cout << (input == decoded ? "Проверка: OK\n" : "Проверка: НЕ СОВПАЛО\n");
 
+    
     freeTree(root);
+    freeCodeTable(table);
+    freeBitList(encoded);
+
     return 0;
 }
