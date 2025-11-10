@@ -1,43 +1,55 @@
 #include <iostream>
-#include "utils.h"
 using namespace std;
 
-// -------------------------
-// Узел дерева Хаффмана
-// -------------------------
-struct HNode
+struct HNode // узел дерева
 {
-    unsigned char ch; // символ (для листа)
-    int freq;         // частота
+    unsigned char ch;
+    int freq;
     HNode *left;
     HNode *right;
     bool isLeaf;
 };
 
-// Создать лист
+struct NodeList
+{
+    HNode *node;
+    NodeList *next;
+};
+
+struct BitNode
+{
+    char bit;
+    BitNode *next;
+};
+
+struct CodeTable
+{
+    unsigned char ch;
+    BitNode *code;
+    CodeTable *next;
+};
+
 HNode *makeLeaf(unsigned char c, int f)
 {
     HNode *n = new HNode;
     n->ch = c;
     n->freq = f;
-    n->left = n->right = 0;
+    n->left = n->right = nullptr;
     n->isLeaf = true;
     return n;
 }
 
-// Создать внутренний узел
 HNode *makeParent(HNode *a, HNode *b)
 {
     HNode *n = new HNode;
     n->ch = 0;
     n->freq = a->freq + b->freq;
-    n->left = a;  // по заданию: left -> 0
-    n->right = b; // right -> 1
+    n->left = a;
+    n->right = b;
     n->isLeaf = false;
     return n;
 }
 
-// Освобождение дерева
 void freeTree(HNode *t)
 {
     if (!t)
@@ -47,236 +59,224 @@ void freeTree(HNode *t)
     delete t;
 }
 
-// Длина C-строки: вынесена в utils.h (mystrlen)
-
-// -------------------------
-// Поиск двух минимальных по freq узлов в массиве nodes[0..n-1]
-// -------------------------
-void pickTwoMin(HNode **nodes, int n, int &i1, int &i2)
+void pushNode(NodeList *&head, HNode *node)
 {
-    i1 = -1;
-    i2 = -1;
-    for (int i = 0; i < n; ++i)
+    NodeList *n = new NodeList;
+    n->node = node;
+    n->next = head;
+    head = n;
+}
+
+void removeNode(NodeList *&head, NodeList *prev, NodeList *cur)
+{
+    if (!prev)
+        head = cur->next;
+    else
+        prev->next = cur->next;
+    delete cur;
+}
+
+void pickTwoMin(NodeList *head, HNode *&min1, HNode *&min2, NodeList *&prev1, NodeList *&prev2)
+{
+    min1 = min2 = nullptr;
+    prev1 = prev2 = nullptr;
+    NodeList *cur = head, *prev = nullptr;
+    while (cur)
     {
-        if (i1 == -1 || nodes[i]->freq < nodes[i1]->freq ||
-            (nodes[i]->freq == nodes[i1]->freq && i > i1))
+        if (!min1 || cur->node->freq < min1->freq)
         {
-            i2 = i1;
-            i1 = i;
+            min2 = min1;
+            prev2 = prev1;
+            min1 = cur->node;
+            prev1 = prev;
         }
-        else if (i2 == -1 || nodes[i]->freq < nodes[i2]->freq ||
-                 (nodes[i]->freq == nodes[i2]->freq && i > i2))
+        else if (!min2 || cur->node->freq < min2->freq)
         {
-            if (i != i1)
-                i2 = i;
+            min2 = cur->node;
+            prev2 = prev;
         }
-    }
-    // упорядочим, чтобы i1 > i2 — так удобнее «выкидывать» элементы
-    if (i1 < i2)
-    {
-        int t = i1;
-        i1 = i2;
-        i2 = t;
+        prev = cur;
+        cur = cur->next;
     }
 }
 
-// -------------------------
-// Построение дерева Хаффмана
-// -------------------------
-HNode *buildHuffman(const int freq[256], int &outUnique)
+HNode *buildHuffman(const int freq[256])
 {
-    HNode *nodes[256];
-    int n = 0;
+    NodeList *list = nullptr;
     for (int c = 0; c < 256; ++c)
     {
         if (freq[c] > 0)
-        {
-            nodes[n++] = makeLeaf((unsigned char)c, freq[c]);
-        }
+            pushNode(list, makeLeaf((unsigned char)c, freq[c]));
     }
-    outUnique = n;
-    if (n == 0)
-        return 0;
-    if (n == 1)
-        return nodes[0]; // один символ — дерево из одного листа
 
-    while (n > 1)
+    if (!list)
+        return nullptr;
+    if (!list->next)
+        return list->node;
+
+    while (list && list->next)
     {
-        int i1, i2;
-        pickTwoMin(nodes, n, i1, i2);
-        HNode *parent = makeParent(nodes[i2], nodes[i1]);
-        nodes[i1] = parent;
-        nodes[i2] = nodes[n - 1];
-        --n;
+        HNode *n1, *n2;
+        NodeList *p1, *p2;
+        pickTwoMin(list, n1, n2, p1, p2);
+        removeNode(list, p1, p1 ? p1->next : list);
+        removeNode(list, p2, p2 ? p2->next : list);
+        HNode *parent = makeParent(n1, n2);
+        pushNode(list, parent);
     }
-    return nodes[0];
+
+    HNode *root = list->node;
+    delete list;
+    return root;
 }
 
-// -------------------------
-// Таблица кодов и построение кодов (тот же код)
-// -------------------------
-void buildCodesDfs(HNode *t, char path[], int depth,
-                   char codes[256][256], int len[256])
+void buildCodesDfs(HNode *t, BitNode *path, CodeTable *&table)
 {
     if (!t)
         return;
     if (t->isLeaf)
     {
-        if (depth == 0)
+        CodeTable *entry = new CodeTable;
+        entry->ch = t->ch;
+        entry->code = nullptr;
+
+        BitNode *curPath = path, *last = nullptr;
+        while (curPath)
         {
-            path[0] = '0';
-            depth = 1;
+            BitNode *b = new BitNode{curPath->bit, nullptr};
+            if (!entry->code)
+                entry->code = b;
+            else
+                last->next = b;
+            last = b;
+            curPath = curPath->next;
         }
-        for (int i = 0; i < depth; ++i)
-            codes[t->ch][i] = path[i];
-        codes[t->ch][depth] = '\0';
-        len[t->ch] = depth;
+        entry->next = table;
+        table = entry;
         return;
     }
-    path[depth] = '0';
-    buildCodesDfs(t->left, path, depth + 1, codes, len);
-    path[depth] = '1';
-    buildCodesDfs(t->right, path, depth + 1, codes, len);
+
+    BitNode leftBit{'0', path};
+    buildCodesDfs(t->left, &leftBit, table);
+
+    BitNode rightBit{'1', path};
+    buildCodesDfs(t->right, &rightBit, table);
 }
 
-void buildCodes(HNode *root, char codes[256][256], int len[256])
+BitNode *getCode(CodeTable *table, unsigned char c)
 {
-    for (int i = 0; i < 256; ++i)
+    while (table)
     {
-        codes[i][0] = '\0';
-        len[i] = 0;
+        if (table->ch == c)
+            return table->code;
+        table = table->next;
     }
-    char path[256];
-    buildCodesDfs(root, path, 0, codes, len);
+    return nullptr;
 }
 
-// -------------------------
-// Кодирование
-// -------------------------
-int encode(const char *s, const char codes[256][256], char *encoded)
+BitNode *encode(const char *s, CodeTable *table)
 {
-    int pos = 0;
+    BitNode *head = nullptr, *tail = nullptr;
     for (int i = 0; s[i]; ++i)
     {
-        const char *z = codes[(unsigned char)s[i]];
-        for (int j = 0; z[j]; ++j)
+        BitNode *code = getCode(table, (unsigned char)s[i]);
+        BitNode *cur = code;
+        while (cur)
         {
-            encoded[pos++] = z[j];
+            BitNode *b = new BitNode{cur->bit, nullptr};
+            if (!head)
+                head = tail = b;
+            else
+                tail->next = b, tail = b;
+            cur = cur->next;
         }
     }
-    encoded[pos] = '\0';
-    return pos;
+    return head;
 }
 
-// -------------------------
-// Декодирование
-// -------------------------
-void decode(const char *encoded, HNode *root, char *out)
+void decode(BitNode *encoded, HNode *root, string &out)
 {
-    int pos = 0;
     if (!root)
-    {
-        out[0] = '\0';
         return;
-    }
-
     if (root->isLeaf)
     {
-        int L = mystrlen(encoded);
-        for (int i = 0; i < L; ++i)
-            out[pos++] = root->ch;
-        out[pos] = '\0';
+        while (encoded)
+        {
+            out.push_back(root->ch);
+            encoded = encoded->next;
+        }
         return;
     }
 
     HNode *cur = root;
-    for (int i = 0; encoded[i]; ++i)
+    while (encoded)
     {
-        if (encoded[i] == '0')
+        if (encoded->bit == '0')
             cur = cur->left;
         else
             cur = cur->right;
 
         if (cur->isLeaf)
         {
-            out[pos++] = cur->ch;
+            out.push_back(cur->ch);
             cur = root;
         }
+        encoded = encoded->next;
     }
-    out[pos] = '\0';
 }
 
-// -------------------------
-// Печать таблицы (символ -> код)
-// -------------------------
-void printTable(const int freq[256], const char codes[256][256])
+void printCode(BitNode *code)
 {
-    cout << "Таблица кодов (символ : код):\n";
-    for (int c = 0; c < 256; ++c)
+    while (code)
     {
-        if (freq[c] > 0)
-        {
-            unsigned char uc = (unsigned char)c;
-            if (uc >= 32 && uc < 127)
-            {
-                cout << "  " << uc << " : " << codes[c] << "\n";
-            }
-            else
-            {
-                cout << "  [#" << c << "] : " << codes[c] << "\n";
-            }
-        }
+        cout << code->bit;
+        code = code->next;
     }
 }
 
-// -------------------------
-// MAIN
-// -------------------------
+void printTable(CodeTable *table)
+{
+    cout << "\nТаблица кодов (символ : код):\n";
+    while (table)
+    {
+        if (table->ch >= 32 && table->ch < 127)
+            cout << "  " << table->ch << " : ";
+        else
+            cout << "  [#" << (int)table->ch << "] : ";
+        printCode(table->code);
+        cout << "\n";
+        table = table->next;
+    }
+}
+
 int main()
 {
-    static char input[100005];
     cout << "Введите исходную строку (без пробелов): ";
+    string input;
     cin >> input;
 
-    int freq[256];
-    for (int i = 0; i < 256; ++i)
-        freq[i] = 0;
-    for (int i = 0; input[i]; ++i)
-        ++freq[(unsigned char)input[i]];
+    int freq[256] = {};
+    for (char c : input)
+        freq[(unsigned char)c]++;
 
-    int uniq = 0;
-    HNode *root = buildHuffman(freq, uniq);
-    if (!root)
-    {
-        cout << "Пустая строка.\n";
-        return 0;
-    }
+    HNode *root = buildHuffman(freq);
 
-    static char codes[256][256];
-    int codeLen[256];
-    buildCodes(root, codes, codeLen);
+    CodeTable *table = nullptr;
+    buildCodesDfs(root, nullptr, table);
 
-    static char encoded[200005];
-    int encLen = encode(input, codes, encoded);
+    BitNode *encoded = encode(input.c_str(), table);
 
-    static char decoded[100005];
+    string decoded;
     decode(encoded, root, decoded);
 
-    cout << "\nКод Хаффмана: " << encoded << "\n\n";
-    printTable(freq, codes);
-    cout << "\nВосстановленная строка: " << decoded << "\n";
+    cout << "\nКод Хаффмана: ";
+    printCode(encoded);
+    cout << "\n";
 
-    if (mystrlen(input) == mystrlen(decoded))
-    {
-        int ok = 1;
-        for (int i = 0; input[i]; ++i)
-            if (input[i] != decoded[i])
-            {
-                ok = 0;
-                break;
-            }
-        cout << (ok ? "Проверка: OK\n" : "Проверка: НЕ СОВПАЛО\n");
-    }
+    printTable(table);
+
+    cout << "\nВосстановленная строка: " << decoded << "\n";
+    cout << (input == decoded ? "Проверка: OK\n" : "Проверка: НЕ СОВПАЛО\n");
 
     freeTree(root);
     return 0;

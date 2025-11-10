@@ -1,23 +1,28 @@
 #include <iostream>
 #include <string>
+#include "utils.h"
 using namespace std;
-
-// === Стек для строк ===
+// <a><b></b><c><\c></a><a></a>
+template <typename T>
 struct StackNode
 {
-    string value;
+    T value;
     StackNode *next;
 };
 
-struct StringStack
+template <typename T>
+struct Stack
 {
-    StackNode *head;
+    StackNode<T> *head;
 
-    StringStack() : head(nullptr) {}
+    Stack() : head(nullptr) {}
 
-    ~StringStack()
+    ~Stack()
     {
-        clear();
+        while (head)
+        {
+            pop();
+        }
     }
 
     bool empty() const
@@ -25,38 +30,29 @@ struct StringStack
         return head == nullptr;
     }
 
-    void push(const string &val)
+    void push(const T &val)
     {
-        StackNode *node = new StackNode;
+        StackNode<T> *node = new StackNode<T>;
         node->value = val;
         node->next = head;
         head = node;
     }
 
-    const string &top() const
+    const T &top() const
     {
-        return head->value; // вызывается, если стек не пуст
+        return head->value;
     }
 
     void pop()
     {
         if (!head)
             return;
-        StackNode *tmp = head;
+        StackNode<T> *tmp = head;
         head = head->next;
         delete tmp;
     }
-
-    void clear()
-    {
-        while (head)
-        {
-            pop();
-        }
-    }
 };
 
-// === Проверка корректности XML ===
 bool isValidXML(const string &s)
 {
     int n = (int)s.size();
@@ -66,13 +62,16 @@ bool isValidXML(const string &s)
     if (s[0] != '<' || s[n - 1] != '>')
         return false;
 
-    StringStack st;
+    Stack<string> tags;
+    Stack<char> brackets;
+
     int i = 0;
 
     while (i < n)
     {
         if (s[i] != '<')
             return false;
+        brackets.push('<');
 
         int j = i + 1;
         bool closing = false;
@@ -90,38 +89,38 @@ bool isValidXML(const string &s)
             ++j;
         }
 
-        if (nameStart == j)
-            return false; // пустое имя
+        if (nameStart == j) // пустое имя
+            return false;
         if (j >= n || s[j] != '>')
-            return false; // нет '>'
+            return false;
 
-        string tag = s.substr(nameStart, j - nameStart);
+        if (brackets.empty() || brackets.top() != '<')
+            return false;
+        brackets.pop();
+
+        string tag = my_substr(s, nameStart, j - nameStart); // получаем имя
 
         if (closing)
         {
-            if (st.empty() || st.top() != tag)
+            if (tags.empty() || tags.top() != tag)
             {
                 return false;
             }
-            st.pop();
+            tags.pop();
         }
         else
         {
-            st.push(tag);
+            tags.push(tag);
         }
 
         i = j + 1;
     }
 
-    return st.empty();
+    return tags.empty() && brackets.empty();
 }
 
-// === Основная программа ===
 int main()
 {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
     string input;
     if (!getline(cin, input))
     {
@@ -165,9 +164,8 @@ int main()
     }
     else
     {
-        cout << "NO SOLUTION\n";
+        cout << "нет решения\n";
     }
 
     return 0;
 }
-//<a><b></b><d></c></a>

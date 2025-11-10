@@ -1,104 +1,84 @@
 #include <iostream>
 using namespace std;
 
-// -------------------------
-// Узел связного списка (универсальный тип)
-// -------------------------
 template <typename T>
-struct Node
+struct ArrayList
 {
-    T value;
-    Node *next;
+    T *data;
+    int size;
+    int capacity;
+
+    ArrayList(int cap = 2) : size(0), capacity(cap)
+    {
+        data = new T[capacity];
+    }
+
+    ~ArrayList()
+    {
+        delete[] data;
+    }
+
+    void append(T v)
+    {
+        if (size >= capacity)
+        {
+            // увеличиваем размер массива в 2 раза
+            capacity *= 2;
+            T *newData = new T[capacity];
+            for (int i = 0; i < size; ++i)
+                newData[i] = data[i];
+            delete[] data;
+            data = newData;
+        }
+        data[size++] = v;
+    }
+
+    void removeLast()
+    {
+        if (size > 0)
+            --size;
+    }
+
+    void print() const
+    {
+        cout << "{";
+        for (int i = 0; i < size; ++i)
+        {
+            if (i > 0)
+                cout << ", ";
+            cout << data[i];
+        }
+        cout << "}";
+    }
 };
 
-// Создание нового узла
 template <typename T>
-Node<T> *createNode(T v)
+void generateSubsets(const T input[], int n, int index, ArrayList<T> &subset)
 {
-    Node<T> *n = new Node<T>;
-    n->value = v;
-    n->next = 0;
-    return n;
-}
-
-// Добавление элемента в конец списка
-template <typename T>
-void appendNode(Node<T> *&head, T v)
-{
-    Node<T> *n = createNode(v);
-    if (!head)
+    if (index == n)
     {
-        head = n;
+        subset.print();
+        cout << "\n";
         return;
     }
-    Node<T> *cur = head;
-    while (cur->next)
-        cur = cur->next;
-    cur->next = n;
+
+    // не включаем элемент
+    generateSubsets(input, n, index + 1, subset);
+
+    // включаем элемент
+    subset.append(input[index]);
+    generateSubsets(input, n, index + 1, subset);
+    subset.removeLast();
 }
 
-// Освобождение памяти
-template <typename T>
-void freeList(Node<T> *&head)
-{
-    while (head)
-    {
-        Node<T> *tmp = head;
-        head = head->next;
-        delete tmp;
-    }
-}
-
-// Печать списка в виде {a, b, c}
-template <typename T>
-void printList(Node<T> *head)
-{
-    cout << "{";
-    Node<T> *cur = head;
-    int first = 1;
-    while (cur)
-    {
-        if (!first)
-            cout << ", ";
-        cout << cur->value;
-        first = 0;
-        cur = cur->next;
-    }
-    cout << "}";
-}
-
-// -------------------------
-// Печать подмножества по битовой маске
-// -------------------------
-template <typename T>
-void printSubset(T arr[], int n, int mask)
-{
-    cout << "{";
-    int first = 1;
-    for (int i = 0; i < n; ++i)
-    {
-        if (mask & (1 << i))
-        {
-            if (!first)
-                cout << ", ";
-            cout << arr[i];
-            first = 0;
-        }
-    }
-    cout << "}";
-}
-
-// -------------------------
-// Главная программа
-// -------------------------
 int main()
 {
     int n;
-    cout << "Введите количество элементов массива: ";
+    cout << "Введите количество элементов множества: ";
     cin >> n;
-    if (n <= 0 || n > 20)
+    if (n <= 0)
     {
-        cout << "Ошибка: некорректное количество (1–20).\n";
+        cout << "Ошибка: некорректное количество.\n";
         return 0;
     }
 
@@ -108,59 +88,29 @@ int main()
 
     if (type == 1)
     {
-        // ----- ЦЕЛЫЕ ЧИСЛА -----
-        Node<int> *head = 0;
-        int arr[20];
-
-        cout << "Введите элементы массива: ";
+        int *arr = new int[n];
+        cout << "Введите элементы множества: ";
         for (int i = 0; i < n; ++i)
-        {
-            int v;
-            cin >> v;
-            arr[i] = v;
-            appendNode(head, v);
-        }
+            cin >> arr[i];
 
-        cout << "\nИсходный массив S = ";
-        printList(head);
-        cout << "\n\nВсе различные подмассивы (подмножества):\n";
+        ArrayList<int> subset;
+        cout << "\nВсе различные подмножества:\n";
+        generateSubsets(arr, n, 0, subset);
 
-        int total = 1 << n;
-        for (int mask = 0; mask < total; ++mask)
-        {
-            printSubset(arr, n, mask);
-            cout << "\n";
-        }
-
-        freeList(head);
+        delete[] arr;
     }
     else if (type == 2)
     {
-        // ----- СТРОКИ -----
-        Node<string> *head = 0;
-        string arr[20];
-
-        cout << "Введите элементы массива (строки): ";
+        string *arr = new string[n];
+        cout << "Введите элементы множества (строки): ";
         for (int i = 0; i < n; ++i)
-        {
-            string v;
-            cin >> v;
-            arr[i] = v;
-            appendNode(head, v);
-        }
+            cin >> arr[i];
 
-        cout << "\nИсходный массив S = ";
-        printList(head);
-        cout << "\n\nВсе различные подмассивы (подмножества):\n";
+        ArrayList<string> subset;
+        cout << "\nВсе различные подмножества:\n";
+        generateSubsets(arr, n, 0, subset);
 
-        int total = 1 << n;
-        for (int mask = 0; mask < total; ++mask)
-        {
-            printSubset(arr, n, mask);
-            cout << "\n";
-        }
-
-        freeList(head);
+        delete[] arr;
     }
     else
     {

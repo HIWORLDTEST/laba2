@@ -1,43 +1,41 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include "utils.h"
 using namespace std;
-
-const int TABLE_SIZE = 100003; // Простое число для хеш-таблицы
-
+//./number2 --file test.txt --query SET_AT 99
 struct HashSet
 {
-    enum State
-    {
-        EMPTY,
-        FILLED,
-        DELETED
-    };
-
-    struct Bucket
+    struct Node
     {
         int key;
-        State state;
-        Bucket() : key(0), state(EMPTY) {}
+        Node *next;
+        Node(int k) : key(k), next(nullptr) {}
     };
 
-    Bucket table[TABLE_SIZE];
+    Node *head;
 
-    int hash(int x) const
+    HashSet() : head(nullptr) {}
+
+    ~HashSet()
     {
-        return (x % TABLE_SIZE + TABLE_SIZE) % TABLE_SIZE;
+        Node *current = head;
+        while (current)
+        {
+            Node *tmp = current;
+            current = current->next;
+            delete tmp;
+        }
     }
 
     bool contains(int x) const
     {
-        int h = hash(x);
-        for (int i = 0; i < TABLE_SIZE; ++i)
+        Node *current = head;
+        while (current)
         {
-            int idx = (h + i) % TABLE_SIZE;
-            if (table[idx].state == EMPTY)
-                return false;
-            if (table[idx].state == FILLED && table[idx].key == x)
+            if (current->key == x)
                 return true;
+            current = current->next;
         }
         return false;
     }
@@ -46,46 +44,37 @@ struct HashSet
     {
         if (contains(x))
             return;
-        int h = hash(x);
-        for (int i = 0; i < TABLE_SIZE; ++i)
-        {
-            int idx = (h + i) % TABLE_SIZE;
-            if (table[idx].state != FILLED)
-            {
-                table[idx].key = x;
-                table[idx].state = FILLED;
-                return;
-            }
-        }
-        cerr << "Ошибка: таблица переполнена\n";
+        Node *newNode = new Node(x);
+        newNode->next = head;
+        head = newNode;
     }
 
-    void remove(int x)
+    void removeKey(int x)
     {
-        int h = hash(x);
-        for (int i = 0; i < TABLE_SIZE; ++i)
+        Node *current = head;
+        Node *prev = nullptr;
+        while (current)
         {
-            int idx = (h + i) % TABLE_SIZE;
-            if (table[idx].state == EMPTY)
-                return;
-            if (table[idx].state == FILLED && table[idx].key == x)
+            if (current->key == x)
             {
-                table[idx].state = DELETED;
+                if (prev)
+                    prev->next = current->next;
+                else
+                    head = current->next;
+                delete current;
                 return;
             }
+            prev = current;
+            current = current->next;
         }
     }
 };
 
-// Загрузка из файла
 void loadFromFile(HashSet &s, const string &filename)
 {
     ifstream file(filename);
     if (!file.is_open())
-    {
-        cerr << "Ошибка: не удалось открыть файл " << filename << endl;
         return;
-    }
     int value;
     while (file >> value)
     {
@@ -94,7 +83,6 @@ void loadFromFile(HashSet &s, const string &filename)
     file.close();
 }
 
-// Сохранение в файл
 void saveToFile(const HashSet &s, const string &filename)
 {
     ofstream file(filename, ios::trunc);
@@ -103,69 +91,94 @@ void saveToFile(const HashSet &s, const string &filename)
         cerr << "Ошибка: не удалось открыть файл для записи " << filename << endl;
         return;
     }
-    for (int i = 0; i < TABLE_SIZE; ++i)
+    HashSet::Node *current = s.head;
+    while (current)
     {
-        if (s.table[i].state == HashSet::FILLED)
-        {
-            file << s.table[i].key << "\n";
-        }
+        file << current->key << "\n";
+        current = current->next;
     }
     file.close();
+}
+
+void printUsage()
+{
+    cerr << "Использование:\n"
+         << "./number2 --file <путь> --query <SETADD|SETDEL|SET_AT> [значение]\n";
 }
 
 int main(int argc, char *argv[])
 {
     if (argc < 5)
     {
-        cerr << "Использование: ./program --file <путь> --query <операция> [значение]\n";
-        cerr << "Операции: SETADD <x>, SETDEL <x>, SET_AT <x>\n";
+        printUsage();
         return 1;
     }
 
-    string fileFlag = argv[1];
-    string filename = argv[2];
-    string queryFlag = argv[3];
-    string query = argv[4];
+    string filename, query;
+    int value = 0;
+    bool haveFile = false, haveQuery = false, haveValue = false;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        string arg = argv[i];
+        if (arg == "--file" && i + 1 < argc)
+        {
+            filename = argv[++i];
+            haveFile = true;
+        }
+        else if (arg == "--query" && i + 1 < argc)
+        {
+            query = argv[++i];
+            haveQuery = true;
+        }
+        else
+        {
+            int temp;
+            if (parseInt(arg, temp))
+            {
+                value = temp;
+                haveValue = true;
+            }
+        }
+    }
+
+    if (!haveFile || !haveQuery)
+    {
+        printUsage();
+        return 1;
+    }
 
     HashSet mySet;
     loadFromFile(mySet, filename);
 
     if (query == "SETADD")
     {
-        if (argc < 6)
+        if (!haveValue)
         {
             cerr << "Ошибка: не указано значение для SETADD\n";
             return 1;
         }
-        int value = stoi(argv[5]);
         mySet.add(value);
         saveToFile(mySet, filename);
-        cout << "Добавлено: " << value << endl;
     }
     else if (query == "SETDEL")
     {
-        if (argc < 6)
+        if (!haveValue)
         {
             cerr << "Ошибка: не указано значение для SETDEL\n";
             return 1;
         }
-        int value = stoi(argv[5]);
-        mySet.remove(value);
+        mySet.removeKey(value);
         saveToFile(mySet, filename);
-        cout << "Удалено: " << value << endl;
     }
     else if (query == "SET_AT")
     {
-        if (argc < 6)
+        if (!haveValue)
         {
             cerr << "Ошибка: не указано значение для SET_AT\n";
             return 1;
         }
-        int value = stoi(argv[5]);
-        if (mySet.contains(value))
-            cout << "YES\n";
-        else
-            cout << "NO\n";
+        cout << (mySet.contains(value) ? "YES\n" : "NO\n");
     }
     else
     {

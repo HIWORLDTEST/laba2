@@ -1,118 +1,133 @@
 #include <iostream>
 using namespace std;
-
-// -------------------------
-// Узел списка (множество)
-// -------------------------
+// 4 5 10 1 3 7
 struct Node
 {
     int value;
     Node *next;
+    Node(int v) : value(v), next(nullptr) {}
 };
 
-// Создание нового узла
-Node *createNode(int v)
+struct LinkedList
 {
-    Node *n = new Node;
-    n->value = v;
-    n->next = 0;
-    return n;
-}
+    Node *head;
+    int sum;
 
-// Добавление в конец списка
-void appendNode(Node *&head, int v)
-{
-    Node *n = createNode(v);
-    if (!head)
-    {
-        head = n;
-        return;
-    }
-    Node *cur = head;
-    while (cur->next)
-        cur = cur->next;
-    cur->next = n;
-}
+    LinkedList() : head(nullptr), sum(0) {}
 
-// Вывод множества
-void printSet(Node *head)
-{
-    cout << "{";
-    Node *cur = head;
-    int first = 1;
-    while (cur)
+    void append(int v)
     {
-        if (!first)
-            cout << ", ";
-        cout << cur->value;
-        first = 0;
-        cur = cur->next;
-    }
-    cout << "}";
-}
-
-// Освобождение памяти
-void freeList(Node *&head)
-{
-    while (head)
-    {
-        Node *tmp = head;
-        head = head->next;
-        delete tmp;
-    }
-}
-
-// -------------------------
-// Простая сортировка (по убыванию)
-// -------------------------
-void sortDesc(int arr[], int n)
-{
-    for (int i = 0; i < n - 1; ++i)
-    {
-        for (int j = i + 1; j < n; ++j)
+        Node *n = new Node(v);
+        if (!head)
         {
-            if (arr[j] > arr[i])
-            {
-                int t = arr[i];
-                arr[i] = arr[j];
-                arr[j] = t;
-            }
+            head = n;
+        }
+        else
+        {
+            Node *cur = head;
+            while (cur->next)
+                cur = cur->next;
+            cur->next = n;
+        }
+        sum += v;
+    }
+
+    void removeLast()
+    {
+        if (!head)
+            return;
+        if (!head->next)
+        {
+            sum -= head->value;
+            delete head;
+            head = nullptr;
+            return;
+        }
+        Node *cur = head;
+        while (cur->next->next)
+            cur = cur->next;
+        sum -= cur->next->value;
+        delete cur->next;
+        cur->next = nullptr;
+    }
+
+    void print() const
+    {
+        cout << "{";
+        Node *cur = head;
+        int first = 1;
+        while (cur)
+        {
+            if (!first)
+                cout << ", ";
+            cout << cur->value;
+            first = 0;
+            cur = cur->next;
+        }
+        cout << "}";
+    }
+
+    ~LinkedList()
+    {
+        while (head)
+        {
+            Node *tmp = head;
+            head = head->next;
+            delete tmp;
         }
     }
-}
+};
 
-// -------------------------
-// Backtracking: раскладываем числа по "корзинам" суммой K
-// -------------------------
-bool dfs(int idx, int n, int nums[], int m, int K, int *bucketSum, int **buckets, int *bucketCount)
+bool dfs(Node *current, LinkedList *buckets, int m, int K)
 {
-    if (idx == n)
-        return 1;
+    if (!current)
+        return true;
 
-    int x = nums[idx];
+    int x = current->value;
+
     for (int i = 0; i < m; ++i)
     {
-        if (bucketSum[i] + x <= K)
+        if (buckets[i].sum + x <= K)
         {
-            bucketSum[i] += x;
-            buckets[i][bucketCount[i]++] = x;
+            buckets[i].append(x);
 
-            if (dfs(idx + 1, n, nums, m, K, bucketSum, buckets, bucketCount))
-                return 1;
+            if (dfs(current->next, buckets, m, K))
+                return true;
 
-            bucketSum[i] -= x;
-            bucketCount[i]--;
+            buckets[i].removeLast();
 
-            if (bucketSum[i] == 0)
-                break; // чтобы не плодить одинаковые пустые корзины
+            if (buckets[i].sum == 0)
+                break;
         }
     }
-    return 0;
+
+    return false;
 }
 
-// -------------------------
-// Главная программа
-// -------------------------
+void sortList(LinkedList &list)
+{
+    if (!list.head || !list.head->next)
+        return;
+
+    bool swapped;
+    do
+    {
+        swapped = false;
+        Node *cur = list.head;
+        while (cur->next)
+        {
+            if (cur->value < cur->next->value)
+            {
+                int t = cur->value;
+                cur->value = cur->next->value;
+                cur->next->value = t;
+                swapped = true;
+            }
+            cur = cur->next;
+        }
+    } while (swapped);
+}
+
 int main()
 {
     int n;
@@ -123,14 +138,7 @@ int main()
         return 0;
     }
 
-    Node *head = 0;
-    int nums[100]; // максимум 100 элементов
-    if (n > 100)
-    {
-        cout << "Слишком много элементов (максимум 100).\n";
-        return 0;
-    }
-
+    LinkedList list;
     cout << "Введите элементы множества: ";
     for (int i = 0; i < n; ++i)
     {
@@ -139,11 +147,9 @@ int main()
         if (v <= 0)
         {
             cout << "Ошибка: только натуральные числа.\n";
-            freeList(head);
             return 0;
         }
-        nums[i] = v;
-        appendNode(head, v);
+        list.append(v);
     }
 
     int K;
@@ -151,52 +157,43 @@ int main()
     cin >> K;
     if (K <= 0)
     {
-        cout << "Ошибка: K должно быть ббб.\n";
-        freeList(head);
+        cout << "Ошибка: K должно быть > 0.\n";
         return 0;
     }
 
     cout << "Исходное множество S = ";
-    printSet(head);
+    list.print();
     cout << "\n";
 
-    // Проверки
-    long long total = 0;
-    for (int i = 0; i < n; ++i)
-        total += nums[i];
-
-    if (total % K != 0)
+    if (list.sum % K != 0)
     {
-        cout << "Ошибка: сумма элементов " << total << " не кратна " << K << ".\n";
-        freeList(head);
+        cout << "Ошибка: сумма элементов " << list.sum << " не кратна " << K << ".\n";
         return 0;
     }
 
-    int m = total / K;
+    int m = list.sum / K;
     if (m > n)
     {
         cout << "Ошибка: слишком много подмножеств.\n";
-        freeList(head);
         return 0;
     }
 
-    for (int i = 0; i < n; ++i)
-        if (nums[i] > K)
+    Node *cur = list.head;
+    while (cur)
+    {
+        if (cur->value > K)
         {
-            cout << "Ошибка: элемент " << nums[i] << " больше K=" << K << ".\n";
-            freeList(head);
+            cout << "Ошибка: элемент " << cur->value << " больше K=" << K << ".\n";
             return 0;
         }
+        cur = cur->next;
+    }
 
-    sortDesc(nums, n); // упорядочим числа по убыванию
+    sortList(list);
 
-    int bucketSum[100] = {0};
-    int *buckets[100];
-    int bucketCount[100] = {0};
-    for (int i = 0; i < m; ++i)
-        buckets[i] = new int[n]; // запас
+    LinkedList *buckets = new LinkedList[m];
 
-    bool ok = dfs(0, n, nums, m, K, bucketSum, buckets, bucketCount);
+    bool ok = dfs(list.head, buckets, m, K);
 
     if (!ok)
     {
@@ -207,22 +204,12 @@ int main()
         cout << "Разбиение найдено (" << m << " подмножеств):\n";
         for (int i = 0; i < m; ++i)
         {
-            cout << i + 1 << ") {";
-            int sum = 0;
-            for (int j = 0; j < bucketCount[i]; ++j)
-            {
-                if (j)
-                    cout << ", ";
-                cout << buckets[i][j];
-                sum += buckets[i][j];
-            }
-            cout << "}  (сумма = " << sum << ")\n";
+            cout << i + 1 << ") ";
+            buckets[i].print();
+            cout << "  (сумма = " << buckets[i].sum << ")\n";
         }
     }
 
-    for (int i = 0; i < m; ++i)
-        delete[] buckets[i];
-
-    freeList(head);
+    delete[] buckets;
     return 0;
 }

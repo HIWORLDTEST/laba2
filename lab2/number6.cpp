@@ -1,36 +1,78 @@
 #include <iostream>
 #include <ctime>
-#include <cstdlib>
 #include "utils.h"
 using namespace std;
 
-// Только базовые функции, без STL
-
-// -------------------- Строковые утилиты --------------------
-// mystrlen вынесена в utils.h
-
-// -------------------- Математические --------------------
-// isPrime/nextPrime вынесены в utils.h
-
-inline int absInt(int x)
+template <typename T>
+struct MyVector
 {
-    return x < 0 ? -x : x;
-}
+    struct Node
+    {
+        T value;
+        Node *next;
+        Node(T v) : value(v), next(nullptr) {}
+    };
+    Node *head;
+    int sz;
+    MyVector() : head(nullptr), sz(0) {}
+    ~MyVector() { clear(); }
 
-// -------------------- Хеш-функция --------------------
-// hash32 вынесен в utils.h
+    void push_back(T v)
+    {
+        Node *n = new Node(v);
+        if (!head)
+            head = n;
+        else
+        {
+            Node *cur = head;
+            while (cur->next)
+                cur = cur->next;
+            cur->next = n;
+        }
+        ++sz;
+    }
 
-// ========================== МЕТОД ЦЕПОЧЕК ==========================
+    void clear()
+    {
+        Node *cur = head;
+        while (cur)
+        {
+            Node *nx = cur->next;
+            delete cur;
+            cur = nx;
+        }
+        head = nullptr;
+        sz = 0;
+    }
+
+    T &operator[](int idx)
+    {
+        Node *cur = head;
+        for (int i = 0; i < idx; ++i)
+            cur = cur->next;
+        return cur->value;
+    }
+
+    int size() { return sz; }
+};
 
 struct ListNode
 {
     int key;
+    int value;
     ListNode *next;
+    ListNode(int k, int v) : key(k), value(v), next(nullptr) {}
 };
 
 struct HashChaining
 {
-    ListNode **buckets;
+    struct Bucket
+    {
+        ListNode *head;
+        Bucket() : head(nullptr) {}
+    };
+
+    MyVector<Bucket> buckets;
     int capacity;
     int size;
 
@@ -38,69 +80,90 @@ struct HashChaining
     {
         capacity = nextPrime(cap);
         size = 0;
-        buckets = new ListNode *[capacity];
         for (int i = 0; i < capacity; ++i)
-            buckets[i] = 0;
+            buckets.push_back(Bucket());
     }
 
     void clear()
     {
-        if (!buckets)
-            return;
         for (int i = 0; i < capacity; ++i)
         {
-            ListNode *cur = buckets[i];
+            ListNode *cur = buckets[i].head;
             while (cur)
             {
                 ListNode *nx = cur->next;
                 delete cur;
                 cur = nx;
             }
+            buckets[i].head = nullptr;
         }
-        delete[] buckets;
-        buckets = 0;
-        capacity = 0;
         size = 0;
     }
 
     int indexOf(int key)
     {
-        unsigned int h = hash32((unsigned)key);
-        return (int)(h % (unsigned)capacity);
+        return key % capacity;
     }
 
-    bool find(int key)
+    ListNode *find(int key)
     {
         int idx = indexOf(key);
-        ListNode *cur = buckets[idx];
+        ListNode *cur = buckets[idx].head;
         while (cur)
         {
             if (cur->key == key)
-                return true;
+                return cur;
             cur = cur->next;
         }
-        return false;
+        return nullptr;
     }
 
-    void insert(int key)
+    void insert(int key, int value)
     {
         if (find(key))
             return;
         int idx = indexOf(key);
-        ListNode *n = new ListNode;
-        n->key = key;
-        n->next = buckets[idx];
-        buckets[idx] = n;
+        ListNode *n = new ListNode(key, value);
+        n->next = buckets[idx].head;
+        buckets[idx].head = n;
         ++size;
+    }
+
+    bool remove(int key)
+    {
+        int idx = indexOf(key);
+        ListNode *cur = buckets[idx].head;
+        ListNode *prev = nullptr;
+        while (cur)
+        {
+            if (cur->key == key)
+            {
+                if (prev)
+                    prev->next = cur->next;
+                else
+                    buckets[idx].head = cur->next;
+                delete cur;
+                --size;
+                return true;
+            }
+            prev = cur;
+            cur = cur->next;
+        }
+        return false;
     }
 };
 
-// ========================== ОТКРЫТАЯ АДРЕСАЦИЯ ==========================
-
 struct HashOpenAddress
 {
-    int *keys;
-    unsigned char *state; // 0=пусто, 1=занято, 2=удалено
+    struct Cell
+    {
+        int key;
+        int value;
+        unsigned char state; // 0 = пусто, 1 = занято, 2 = удалено
+        Cell() : key(0), value(0), state(0) {}
+    };
+
+    MyVector<Cell> cells;
     int capacity;
     int size;
 
@@ -108,57 +171,52 @@ struct HashOpenAddress
     {
         capacity = nextPrime(cap);
         size = 0;
-        keys = new int[capacity];
-        state = new unsigned char[capacity];
         for (int i = 0; i < capacity; ++i)
-            state[i] = 0;
+            cells.push_back(Cell());
     }
 
     void clear()
     {
-        if (!keys)
-            return;
-        delete[] keys;
-        delete[] state;
-        keys = 0;
-        state = 0;
-        capacity = 0;
+        for (int i = 0; i < capacity; ++i)
+        {
+            cells[i].key = 0;
+            cells[i].value = 0;
+            cells[i].state = 0;
+        }
         size = 0;
     }
 
-    int probeIndex(int key)
+    Cell *find(int key)
     {
-        unsigned int h = hash32((unsigned)key) % (unsigned)capacity;
-        int start = (int)h;
+        int start = key % capacity;
         for (int k = 0; k < capacity; ++k)
         {
             int i = (start + k) % capacity;
-            if (state[i] == 0)
-                return -1;
-            if (state[i] == 1 && keys[i] == key)
-                return i;
+            if (cells[i].state == 0)
+                return nullptr;
+            if (cells[i].state == 1 && cells[i].key == key)
+                return &cells[i];
         }
-        return -1;
+        return nullptr;
     }
 
-    bool find(int key) { return probeIndex(key) != -1; }
-
-    void insert(int key)
+    void insert(int key, int value)
     {
         if (find(key))
             return;
-        unsigned int h = hash32((unsigned)key) % (unsigned)capacity;
-        int start = (int)h;
+
+        int start = key % capacity;
         int firstDel = -1;
         for (int k = 0; k < capacity; ++k)
         {
             int i = (start + k) % capacity;
-            if (state[i] == 1)
+
+            if (cells[i].state == 1)
             {
-                if (keys[i] == key)
+                if (cells[i].key == key)
                     return;
             }
-            else if (state[i] == 2)
+            else if (cells[i].state == 2)
             {
                 if (firstDel == -1)
                     firstDel = i;
@@ -167,31 +225,48 @@ struct HashOpenAddress
             {
                 if (firstDel != -1)
                     i = firstDel;
-                keys[i] = key;
-                state[i] = 1;
+                cells[i].key = key;
+                cells[i].value = value;
+                cells[i].state = 1;
                 ++size;
                 return;
             }
         }
     }
+
+    bool remove(int key)
+    {
+        int start = key % capacity;
+        for (int k = 0; k < capacity; ++k)
+        {
+            int i = (start + k) % capacity;
+            if (cells[i].state == 0)
+                return false;
+            if (cells[i].state == 1 && cells[i].key == key)
+            {
+                cells[i].state = 2;
+                --size;
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
-// ========================== ЭМПИРИЧЕСКИЙ АНАЛИЗ ==========================
-
-void benchmarkSearches(int *data, int N, int *queries, int M)
+void benchmarkSearches(MyVector<int> &data, int *queries, int M)
 {
-    int capChain = nextPrime(N * 2 + 1);
-    int capOpen = nextPrime(N * 3 + 1);
+    int capChain = nextPrime(data.size() * 2 + 1);
+    int capOpen = nextPrime(data.size() * 3 + 1);
 
     HashChaining Hc;
     Hc.init(capChain);
     HashOpenAddress Ho;
     Ho.init(capOpen);
 
-    for (int i = 0; i < N; ++i)
+    for (int i = 0; i < data.size(); ++i)
     {
-        Hc.insert(data[i]);
-        Ho.insert(data[i]);
+        Hc.insert(data[i], data[i]);
+        Ho.insert(data[i], data[i]);
     }
 
     clock_t t1 = clock();
@@ -215,11 +290,25 @@ void benchmarkSearches(int *data, int N, int *queries, int M)
     cout << "Таблица (цепочки):   найдено " << hitsC << ", время " << timeC << " c\n";
     cout << "Таблица (откр.адр.): найдено " << hitsO << ", время " << timeO << " c\n";
 
+    // демонстрация удаления
+    cout << "\n=== Проверка удаления ===\n";
+    int delKey;
+    cout << "Введите ключ для удаления: ";
+    cin >> delKey;
+
+    bool r1 = Hc.remove(delKey);
+    bool r2 = Ho.remove(delKey);
+
+    cout << "Цепочки: " << (r1 ? "удалён" : "не найден") << endl;
+    cout << "Откр.адр.: " << (r2 ? "удалён" : "не найден") << endl;
+
+    cout << "Повторный поиск ключа " << delKey << "...\n";
+    cout << "Цепочки: " << (Hc.find(delKey) ? "найден" : "отсутствует") << endl;
+    cout << "Откр.адр.: " << (Ho.find(delKey) ? "найден" : "отсутствует") << endl;
+
     Hc.clear();
     Ho.clear();
 }
-
-// ========================== ИЗОМОРФНЫЕ СТРОКИ ==========================
 
 bool isomorphic(const char *a, const char *b)
 {
@@ -227,37 +316,36 @@ bool isomorphic(const char *a, const char *b)
     if (n1 != n2)
         return false;
 
-    int mapAB[256], mapBA[256];
-    for (int i = 0; i < 256; ++i)
-    {
-        mapAB[i] = -1;
-        mapBA[i] = -1;
-    }
+    HashChaining mapAB, mapBA;
+    mapAB.init(257);
+    mapBA.init(257);
 
     for (int i = 0; i < n1; ++i)
     {
         unsigned char x = (unsigned char)a[i];
         unsigned char y = (unsigned char)b[i];
-        if (mapAB[x] == -1 && mapBA[y] == -1)
+
+        ListNode *nAB = mapAB.find(x);
+        ListNode *nBA = mapBA.find(y);
+
+        if (!nAB && !nBA)
         {
-            mapAB[x] = y;
-            mapBA[y] = x;
+            mapAB.insert(x, y);
+            mapBA.insert(y, x);
         }
         else
         {
-            if (mapAB[x] != y || mapBA[y] != x)
+            if (!nAB || !nBA || nAB->value != y || nBA->value != x)
                 return false;
         }
     }
     return true;
 }
 
-// ========================== MAIN ==========================
-
 int main()
 {
     cout << "Выберите режим:\n";
-    cout << "1) Эмпирический анализ хеш-таблиц (поиск)\n";
+    cout << "1) Эмпирический анализ хеш-таблиц (поиск + удаление)\n";
     cout << "2) Проверка изоморфности двух строк\n";
     cout << "Ваш выбор: ";
     int mode;
@@ -275,30 +363,29 @@ int main()
             return 0;
         }
 
-        int *data = new int[N];
+        MyVector<int> data;
         cout << "Введите " << N << " целых элементов:\n";
         for (int i = 0; i < N; ++i)
-            cin >> data[i];
+        {
+            int x;
+            cin >> x;
+            data.push_back(x);
+        }
 
         int M;
         cout << "Введите M (число поисковых запросов): ";
         cin >> M;
         if (M <= 0 || M > 200000)
-        {
-            cout << "Некорректный M (1..200000).\n";
-            delete[] data;
             return 0;
-        }
 
         int *q = new int[M];
         cout << "Введите " << M << " значений для поиска:\n";
         for (int i = 0; i < M; ++i)
             cin >> q[i];
 
-        benchmarkSearches(data, N, q, M);
+        benchmarkSearches(data, q, M);
 
         delete[] q;
-        delete[] data;
     }
     else if (mode == 2)
     {
